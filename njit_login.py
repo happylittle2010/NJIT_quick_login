@@ -17,17 +17,23 @@ from broswer_finder import get_browser_path
 from welcome_ascii_art import get_welcome_ascii_art
 
 
-def get_config_file_path(config_file_name):
+def get_config_dir():
     # 获取用户目录
     user_dir = os.path.expanduser("~")
 
     # 检查目标目录是否存在
     config_dir = osp.join(user_dir, "happylittle", "njit_quick_login")
-    config_file_path: str = osp.join(config_dir, config_file_name)
 
     # 如果目录不存在，则创建目录
     if not osp.exists(config_dir):
         os.makedirs(config_dir)
+
+    return config_dir
+
+
+def get_config_file_path(config_file_name):
+    config_dir = get_config_dir()
+    config_file_path: str = osp.join(config_dir, config_file_name)
 
     return config_file_path
 
@@ -143,28 +149,26 @@ def save_config_file(
         press_any_key_to_exit(is_auto_exit=False)
 
 
-def create_shortcut(bin_path: str, name: str, desc: str):
+def create_shortcut(bin_path: str, shortcut_path: str, desc: str):
     """
     这里调用了winshell的CreateShortcut函数。
-    传入4个参数，分别为：快捷方式的路径，exe文件的路径，图标路径，还有描述信息。
     :param bin_path: exe路径
-    :param name: 需要创建快捷方式的路径
+    :param shortcut_path: 需要创建快捷方式的路径
     :param desc: 描述，鼠标放在图标上面会有提示
     :return:
     """
     try:
-        shortcut = name + ".lnk"
+        shortcut = shortcut_path + ".lnk"
         winshell.CreateShortcut(
             Path=shortcut, Target=bin_path, Icon=(bin_path, 0), Description=desc
         )
         return True
     except ImportError as err:
-        print("Well, do nothing as 'winshell' lib may not available on current os")
-        print("error detail %s" % str(err))
+        colour_print(f"创建快捷方式失败！错误原因：{str(err)}", "red")
     return False
 
 
-def get_desktop():
+def get_desktop_path():
     key = winreg.OpenKey(
         winreg.HKEY_CURRENT_USER,
         r"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders",
@@ -172,20 +176,9 @@ def get_desktop():
     return winreg.QueryValueEx(key, "Desktop")[0]
 
 
-def add_shortcut_to_desktop(program_name: str, program_desc: str):
-    desktop_dir = get_desktop()
-    bin_path = os.path.basename(sys.argv[0])  # 获取自身文件名
-    link_path = desktop_dir + f"\\{program_name}"
-    desc = program_desc
-    create_shortcut(bin_path, link_path, desc)
-
-
-def add_to_startup(program_name: str, program_desc: str):
-    """
-    将快捷方式添加到自启动目录
-    """
-    username = getpass.getuser()  # 获取用户名
+def get_startup_path():
     syspath = os.getenv("SystemDrive")  # 系统盘符名称
+    username = getpass.getuser()  # 获取用户名
     # 自启动目录
     startup_path = os.path.join(
         syspath,
@@ -193,10 +186,24 @@ def add_to_startup(program_name: str, program_desc: str):
         username,
         r"AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup",
     )
-    bin_path = os.path.basename(sys.argv[0])  # 获取自身文件名
-    link_path = startup_path + f"\\{program_name}"
-    desc = program_desc
-    create_shortcut(bin_path, link_path, desc)
+    return startup_path
+
+
+def add_shortcut_to_desktop(program_name: str, program_desc: str):
+    desktop_dir = get_desktop_path()
+    bin_path = sys.argv[0]  # 获取自身路径
+    shortcut_path = desktop_dir + f"\\{program_name}"
+    create_shortcut(bin_path=bin_path, shortcut_path=shortcut_path, desc=program_desc)
+
+
+def add_to_startup(program_name: str, program_desc: str):
+    """
+    将快捷方式添加到自启动目录
+    """
+    startup_path = get_startup_path()
+    bin_path = sys.argv[0]  # 获取自身路径
+    shortcut_path = startup_path + f"\\{program_name}"
+    create_shortcut(bin_path=bin_path, shortcut_path=shortcut_path, desc=program_desc)
 
 
 def colour_print(text, colour):
@@ -494,20 +501,23 @@ def use_requests_login(target_url, params, headers, retry_count=0, max_retries=5
 if __name__ == "__main__":
     program_name = "NJIT Quick Login"
     program_desc = "快捷登录NJIT认证系统"
-    program_version = "2.2.1"
+    program_version = "2.3.1"
+    github_url = "https://github.com/happylittle2010/NJIT_quick_login"
+
+    config_file_name = "njit_quick_login.json"
 
     print(get_welcome_ascii_art())
     colour_print(program_name, "purple")
     colour_print(f"Version: {program_version}", "purple")
+    colour_print(f"\n本程序开源于GitHub: {github_url}", "cyan")
     print("By Happylittle")
-    print("\n" * 2)
+    print("\n")
 
     colour_print("欢迎使用NJIT快捷登录！", "cyan")
     colour_print(
         "本程序将使用您的账号密码自动登录到NJIT认证系统，以便您快速上网。", "cyan"
     )
 
-    config_file_name = "njit_quick_login.json"
     (
         user_account,
         user_password,
@@ -523,6 +533,25 @@ if __name__ == "__main__":
     ) = read_config_file(config_file_name)
 
     if is_first_time_use:
+        if not created_desktop_shortcut and not asked_desktop_shortcut_permission:
+            colour_print("\n已添加桌面快捷方式。\n", "cyan")
+            add_shortcut_to_desktop(program_name, program_desc)
+            created_desktop_shortcut = True
+            asked_desktop_shortcut_permission = False
+        save_config_file(
+            config_file_name=config_file_name,
+            user_account=user_account,
+            user_password=user_password,
+            last_run_drission_page_time=last_run_drission_page_time,
+            target_url=target_url,
+            params=params,
+            headers=headers,
+            created_desktop_shortcut=created_desktop_shortcut,
+            asked_desktop_shortcut_permission=asked_desktop_shortcut_permission,
+            created_startup_shortcut=created_startup_shortcut,
+            asked_startup_permission=asked_startup_permission,
+        )
+
         continue_page = check_browser_exist()
         if continue_page is None:
             press_any_key_to_exit(is_auto_exit=False)
@@ -558,17 +587,17 @@ if __name__ == "__main__":
                 last_run_drission_page_time = current_time
 
                 save_config_file(
-                    config_file_name,
-                    correct_account,
-                    correct_password,
-                    last_run_drission_page_time,
-                    target_url,
-                    correct_params,
-                    headers,
-                    created_desktop_shortcut,
-                    asked_startup_permission,
-                    created_startup_shortcut,
-                    asked_desktop_shortcut_permission,
+                    config_file_name=config_file_name,
+                    user_account=user_account,
+                    user_password=user_password,
+                    last_run_drission_page_time=last_run_drission_page_time,
+                    target_url=target_url,
+                    params=params,
+                    headers=headers,
+                    created_desktop_shortcut=created_desktop_shortcut,
+                    asked_desktop_shortcut_permission=asked_desktop_shortcut_permission,
+                    created_startup_shortcut=created_startup_shortcut,
+                    asked_startup_permission=asked_startup_permission,
                 )
             else:
                 correct_params = use_requests_login(target_url, params, headers)
@@ -577,17 +606,17 @@ if __name__ == "__main__":
                 correct_account = correct_params["user_account"]
                 correct_password = correct_params["user_password"]
                 save_config_file(
-                    config_file_name,
-                    correct_account,
-                    correct_password,
-                    last_run_drission_page_time,
-                    target_url,
-                    correct_params,
-                    headers,
-                    created_desktop_shortcut,
-                    asked_startup_permission,
-                    created_startup_shortcut,
-                    asked_desktop_shortcut_permission,
+                    config_file_name=config_file_name,
+                    user_account=user_account,
+                    user_password=user_password,
+                    last_run_drission_page_time=last_run_drission_page_time,
+                    target_url=target_url,
+                    params=params,
+                    headers=headers,
+                    created_desktop_shortcut=created_desktop_shortcut,
+                    asked_desktop_shortcut_permission=asked_desktop_shortcut_permission,
+                    created_startup_shortcut=created_startup_shortcut,
+                    asked_startup_permission=asked_startup_permission,
                 )
             time.sleep(3)
             after_login_check_result = check_connection()
@@ -608,35 +637,18 @@ if __name__ == "__main__":
                         colour_print("跳过设置程序为开机自启动。\n", "cyan")
                         created_startup_shortcut = False
                         asked_startup_permission = True
-                if (
-                        not created_desktop_shortcut
-                        and not asked_desktop_shortcut_permission
-                ):
-                    colour_print(
-                        "\n是否添加桌面快捷方式？按Y、回车键或空格键确认，按其他键跳过。", "yellow"
-                    )
-                    user_choice = msvcrt.getch().decode()
-                    if user_choice in ('y', 'Y', '\r', ' '):  # '\r' 是回车键，' ' 是空格键
-                        colour_print("已添加桌面快捷方式。\n", "cyan")
-                        add_shortcut_to_desktop(program_name, program_desc)
-                        created_desktop_shortcut = True
-                        asked_desktop_shortcut_permission = True
-                    else:
-                        colour_print("跳过添加桌面快捷方式。\n", "cyan")
-                        created_desktop_shortcut = False
-                        asked_desktop_shortcut_permission = True
                 save_config_file(
-                    config_file_name,
-                    correct_account,
-                    correct_password,
-                    last_run_drission_page_time,
-                    target_url,
-                    correct_params,
-                    headers,
-                    created_desktop_shortcut,
-                    asked_startup_permission,
-                    created_startup_shortcut,
-                    asked_desktop_shortcut_permission,
+                    config_file_name=config_file_name,
+                    user_account=user_account,
+                    user_password=user_password,
+                    last_run_drission_page_time=last_run_drission_page_time,
+                    target_url=target_url,
+                    params=params,
+                    headers=headers,
+                    created_desktop_shortcut=created_desktop_shortcut,
+                    asked_desktop_shortcut_permission=asked_desktop_shortcut_permission,
+                    created_startup_shortcut=created_startup_shortcut,
+                    asked_startup_permission=asked_startup_permission,
                 )
                 press_any_key_to_exit(is_auto_exit=True)
             else:
@@ -650,7 +662,7 @@ if __name__ == "__main__":
             )
             time.sleep(check_connection_retry_delay)
     colour_print(
-        f"{check_connection_max_retries}次重试后仍无法连接网络，请检查你的网络连接。",
+        f"{check_connection_max_retries} 次重试后仍无法连接网络，请检查你的网络连接。",
         "red",
     )
     press_any_key_to_exit(is_auto_exit=False)
