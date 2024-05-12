@@ -12,6 +12,7 @@ import requests
 import winshell
 from DrissionPage import ChromiumOptions
 from DrissionPage import ChromiumPage
+from DrissionPage.errors import PageDisconnectedError
 
 from broswer_finder import get_browser_path
 from welcome_ascii_art import get_welcome_ascii_art
@@ -36,6 +37,12 @@ def get_config_file_path(config_file_name):
     config_file_path: str = osp.join(config_dir, config_file_name)
 
     return config_file_path
+
+
+def delete_config_file(config_file_name: str):
+    config_file_path = get_config_file_path(config_file_name)
+    if osp.exists(config_file_path):
+        os.remove(config_file_path)
 
 
 def build_config(user_account, user_password, last_run_drission_page_time, target_url, params, headers, created_desktop_shortcut, asked_startup_permission, created_startup_shortcut, asked_desktop_shortcut_permission):
@@ -268,23 +275,26 @@ def press_any_key_to_exit(is_auto_exit=True):
         sys.exit()
 
 
-def check_browser_exist():
+def get_drission_page(retry_count=0, max_retries=3, retry_delay=5):
+    if retry_count >= max_retries:
+        colour_print("尝试调用浏览器次数过多！", "red")
+        return None
+
     login_page = "http://172.31.255.156/a79.htm"
 
-    colour_print("首次运行程序，正在检查浏览器是否存在...", "cyan")
-    browser_path = None
+    colour_print("尝试调用浏览器...", "cyan")
     # 尝试调用浏览器访问网页
     try:
-        continue_page = ChromiumPage()
-        continue_page.get(login_page)
-        colour_print("浏览器检查完成。", "green")
-        return continue_page
+        page = ChromiumPage()
+        page.get(login_page, timeout=10)
+        return page
     except FileNotFoundError:
         # DrissionPage库没有找到浏览器，尝试使用browser_finder库查找浏览器
-        chrome_path = get_browser_path("chrome")
         edge_path = get_browser_path("edge")
+        chrome_path = get_browser_path("chrome")
+        browser360_path = get_browser_path("360")
         # 如果chrome_path和edge_path都为None，说明没有找到浏览器
-        if chrome_path is None and edge_path is None:
+        if chrome_path is None and edge_path is None and browser360_path is None:
             colour_print(
                 "你的电脑未安装适合的浏览器，请安装Microsoft Edge浏览器或Google Chrome浏览器后重试",
                 "red",
@@ -293,25 +303,40 @@ def check_browser_exist():
         else:
             if edge_path:
                 browser_path = edge_path
-            else:
+            elif chrome_path:
                 browser_path = chrome_path
+            elif browser360_path:
+                browser_path = browser360_path
+    except PageDisconnectedError as e:
+        colour_print(f"连接浏览器失败，错误信息：{str(e)}", "red")
+        colour_print(f"将在 {retry_delay} 秒后重试...", "yellow")
+        time.sleep(retry_delay)
+        page = get_drission_page(retry_count=retry_count + 1, retry_delay=retry_delay + 5)
+        return page
     except Exception as e:
         colour_print(f"发生未知错误：{str(e)}", "red")
         return None
 
     try:
         co = ChromiumOptions().set_browser_path(browser_path)
-        continue_page = ChromiumPage(co)
-        continue_page.get(login_page, timeout=10)
-        return continue_page
+        page = ChromiumPage(co)
+        page.get(login_page, timeout=10)
+        return page
     except FileNotFoundError:
         colour_print(
             "你的电脑未安装适合的浏览器，请安装Microsoft Edge浏览器或Google Chrome浏览器后重试",
             "red",
         )
         return None
+    except PageDisconnectedError as e:
+        colour_print(f"连接浏览器失败，错误信息：{str(e)}", "red")
+        colour_print(f"将在 {retry_delay} 秒后重试...", "yellow")
+        time.sleep(retry_delay)
+        page = get_drission_page(retry_count=retry_count + 1, retry_delay=retry_delay + 5)
+        return page
     except Exception as e:
         colour_print(f"发生未知错误：{e}", "red")
+        delete_config_file(config_file_name)
         return None
 
 
@@ -374,7 +399,6 @@ def parse_request_url(request_url: str, user_account: str, user_password: str):
 def use_drission_page_login(
         user_account: str,
         user_password: str,
-        chromium_page: ChromiumPage = None,
         retry_count=0,
         max_retries=5,
 ):
@@ -385,10 +409,9 @@ def use_drission_page_login(
 
     colour_print("正在模拟人工操作浏览器登录认证系统...", "cyan")
 
-    if chromium_page is None:
-        page = ChromiumPage()
-    else:
-        page = chromium_page
+    page = get_drission_page()
+    if page is None:
+        press_any_key_to_exit(is_auto_exit=False)
 
     retry_delay = 5
     page_get_max_retries = 5
@@ -396,24 +419,23 @@ def use_drission_page_login(
         # 跳转到登录页面
         connection_result = page.get("http://172.31.255.156/a79.htm", timeout=5)
         if connection_result:
-            page.listen.start("172.31.255.156")
             for character in user_account:
                 # 定位到账号文本框，获取文本框元素
                 page.ele("@@class=edit_lobo_cell@@name=DDDDD").input(character)
-                time.sleep(random.uniform(0.1, 0.3))
+                time.sleep(random.uniform(0.05, 0.4))
             for character in user_password:
                 # 定位到密码文本框，获取文本框元素
                 page.ele("@@class=edit_lobo_cell@@name=upass").input(character)
-                time.sleep(random.uniform(0.1, 0.3))
+                time.sleep(random.uniform(0.05, 0.4))
             # 定位到登录按钮，获取按钮元素
-            time.sleep(1)
             ele = page.ele("@value=登录")
 
+            page.listen.start("172.31.255.156")
             # 如元素不被遮挡，用模拟点击，否则用js点击
             ele.click(by_js=None)
+            time.sleep(1)
 
             response = page.listen.wait()
-            time.sleep(1)
             response_body = response.response.body
             if "Portal协议认证成功" in response_body:
                 colour_print("Portal协议认证成功！", "green")
@@ -462,7 +484,7 @@ def use_requests_login(target_url, params, headers, retry_count=0, max_retries=5
 
     if target_url is None or params is None or headers is None:
         colour_print("程序出现错误，请重新运行程序！", "red")
-        os.remove(config_file_name)
+        delete_config_file(config_file_name)
         press_any_key_to_exit(is_auto_exit=False)
     colour_print(
         "上次的模拟人工登录在一周之内，使用上次登录时缓存的信息尝试登录...", "cyan"
@@ -474,7 +496,7 @@ def use_requests_login(target_url, params, headers, retry_count=0, max_retries=5
         colour_print(
             f"认证失败！尝试使用缓存认证时出现错误：{str(e)}！请重新运行程序。", "red"
         )
-        os.remove(config_file_name)
+        delete_config_file(config_file_name)
         press_any_key_to_exit(is_auto_exit=False)
     if "Portal协议认证成功" in response_text:
         colour_print("Portal协议认证成功！", "green")
@@ -548,33 +570,18 @@ if __name__ == "__main__":
             asked_startup_permission=asked_startup_permission,
         )
 
-        continue_page = check_browser_exist()
-        if continue_page is None:
-            press_any_key_to_exit(is_auto_exit=False)
-
     check_connection_retry_delay = 5
     check_connection_max_retries = 5
     for retry in range(check_connection_max_retries):
         result = check_connection()
         if result == "Success":
-            if is_first_time_use:
-                continue_page.quit()
             press_any_key_to_exit(is_auto_exit=True)
         elif result == "Need authentication":
             # 检查是否间隔了一个星期
             current_time = time.time()
             one_week = 7 * 24 * 60 * 60
             if current_time - last_run_drission_page_time >= one_week:
-                if is_first_time_use:
-                    request_url, headers, correct_account, correct_password = (
-                        use_drission_page_login(
-                            user_account, user_password, continue_page
-                        )
-                    )
-                else:
-                    request_url, headers, correct_account, correct_password = (
-                        use_drission_page_login(user_account, user_password)
-                    )
+                request_url, headers, correct_account, correct_password = use_drission_page_login(user_account, user_password)
 
                 # use_drission_page_login返回的账号密码是正确的，将其保存到配置文件
                 target_url, correct_params = parse_request_url(
@@ -614,7 +621,7 @@ if __name__ == "__main__":
                     created_startup_shortcut=created_startup_shortcut,
                     asked_startup_permission=asked_startup_permission,
                 )
-            time.sleep(3)
+            time.sleep(1.5)
             after_login_check_result = check_connection()
             if after_login_check_result == "Success":
                 if not created_startup_shortcut and not asked_startup_permission:
@@ -649,7 +656,7 @@ if __name__ == "__main__":
                 press_any_key_to_exit(is_auto_exit=True)
             else:
                 colour_print("错误：认证成功，但仍无法连接网络。", "red")
-                os.remove(config_file_name)
+                delete_config_file(config_file_name)
                 press_any_key_to_exit(is_auto_exit=False)
         else:
             colour_print(
