@@ -519,7 +519,7 @@ def use_requests_login(target_url, params, headers, retry_count=0, max_retries=5
 if __name__ == "__main__":
     program_name = "NJIT Quick Login"
     program_desc = "快捷登录NJIT认证系统"
-    program_version = "2.3.2"
+    program_version = "2.4.2"
     github_url = "https://github.com/happylittle2010/NJIT_quick_login"
 
     config_file_name = "njit_quick_login.json"
