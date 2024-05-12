@@ -279,26 +279,24 @@ def check_browser_exist():
         continue_page.get(login_page)
         colour_print("浏览器检查完成。", "green")
         return continue_page
-    except FileNotFoundError as e:
-        # 检查e的内容是否包含“未找到浏览器”
-        if "未找到浏览器" in str(e):
-            # DrissionPage库没有找到浏览器，尝试使用browser_finder库查找浏览器
-            chrome_path = get_browser_path("chrome")
-            edge_path = get_browser_path("edge")
-            # 如果chrome_path和edge_path都为None，说明没有找到浏览器
-            if chrome_path is None and edge_path is None:
-                colour_print(
-                    "你的电脑未安装适合的浏览器，请安装Microsoft Edge浏览器或Google Chrome浏览器后重试",
-                    "red",
-                )
-                return None
+    except FileNotFoundError:
+        # DrissionPage库没有找到浏览器，尝试使用browser_finder库查找浏览器
+        chrome_path = get_browser_path("chrome")
+        edge_path = get_browser_path("edge")
+        # 如果chrome_path和edge_path都为None，说明没有找到浏览器
+        if chrome_path is None and edge_path is None:
+            colour_print(
+                "你的电脑未安装适合的浏览器，请安装Microsoft Edge浏览器或Google Chrome浏览器后重试",
+                "red",
+            )
+            return None
+        else:
+            if edge_path:
+                browser_path = edge_path
             else:
-                if edge_path:
-                    browser_path = edge_path
-                else:
-                    browser_path = chrome_path
+                browser_path = chrome_path
     except Exception as e:
-        colour_print(f"发生未知错误：{e}", "red")
+        colour_print(f"发生未知错误：{str(e)}", "red")
         return None
 
     try:
@@ -306,14 +304,12 @@ def check_browser_exist():
         continue_page = ChromiumPage(co)
         continue_page.get(login_page, timeout=10)
         return continue_page
-    except FileNotFoundError as e:
-        # 检查e的内容是否包含“未找到浏览器”
-        if "未找到浏览器" in str(e):
-            colour_print(
-                "你的电脑未安装适合的浏览器，请安装Microsoft Edge浏览器或Google Chrome浏览器后重试",
-                "red",
-            )
-            return None
+    except FileNotFoundError:
+        colour_print(
+            "你的电脑未安装适合的浏览器，请安装Microsoft Edge浏览器或Google Chrome浏览器后重试",
+            "red",
+        )
+        return None
     except Exception as e:
         colour_print(f"发生未知错误：{e}", "red")
         return None
@@ -501,7 +497,7 @@ def use_requests_login(target_url, params, headers, retry_count=0, max_retries=5
 if __name__ == "__main__":
     program_name = "NJIT Quick Login"
     program_desc = "快捷登录NJIT认证系统"
-    program_version = "2.3.1"
+    program_version = "2.3.2"
     github_url = "https://github.com/happylittle2010/NJIT_quick_login"
 
     config_file_name = "njit_quick_login.json"
