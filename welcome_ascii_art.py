@@ -1,4 +1,3 @@
-
 welcome_art_list = [
     r"""
 
